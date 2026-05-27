@@ -1,9 +1,8 @@
-import os  # રેન્ડરના એન્વાયરમેન્ટ વેરિએબલ્સ વાંચવા માટે ખાસ ઉમેરેલ
+import os
 import random
-import smtplib
-import threading  # ૧૦ મિનિટના ટાઈમર માટે ઉમેરેલ
-import time  # ટાઈમ આઉટ માટે ઉમેરેલ
-from email.mime.text import MIMEText
+import threading
+import time
+import requests  # બ્રેવોની API કોલ કરવા માટે ખાસ ઉમેરેલ
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 # Appwrite SDK ઇમ્પોર્ટ
@@ -12,7 +11,6 @@ from appwrite.services.databases import Databases
 from appwrite.query import Query
 
 app = Flask(__name__)
-# HTML ફાઇળ અને સર્વર વચ્ચે કનેક્શન પ્રોબ્લેમ (CORS) ન થાય તે માટે
 CORS(app)
 
 # --- Appwrite ડેટાબેઝ કન્ફિગરેશન ---
@@ -27,318 +25,149 @@ client.set_endpoint(APPWRITE_ENDPOINT)
 client.set_project(APPWRITE_PROJECT_ID)
 databases = Databases(client)
 
-# હંગામી ધોરણે OTP સેવ કરવા માટેનું ડિક્શનરી
 otp_store = {}
 
-# --- બ્રેવો (Brevo) ઈમેલ મોકલવાનું નવું કન્ફિગરેશન ---
-SMTP_SERVER = "smtp-relay.brevo.com"
-SMTP_PORT = 587
+# --- બ્રેવો (Brevo) API કન્ફિગરેશન ---
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
+BREVO_API_KEY = "Xsmtpsib-03ac21bb98bc895d741223d78fb1c41d098a52788e00ee458a3c8d64dddb9209-uU2K7PpPK4VHRrea"
 
-# અહીં os.environ.get લખવાથી સર્વર તમારા રેન્ડર ડેશબોર્ડના વેરિએબલ્સ વાંચશે
-SENDER_EMAIL = os.environ.get("GMAIL_USER", "cashfarmerkjsltk@gmail.com")
-SENDER_PASSWORD = os.environ.get("GMAIL_PASS", "Xsmtpsib-03ac21bb98bc895d741223d78fb1c41d098a52788e00ee458a3c8d64dddb9209-uU2K7PpPK4VHRrea")
-
-
-def send_email(receiver_email, subject, body):
-    """યુઝરને ઈમેલ મોકલવા માટેનું હેલ્પર ફંક્શન"""
-    try:
-        msg = MIMEText(body)
-        msg["Subject"] = subject
-        msg["From"] = SENDER_EMAIL
-        msg["To"] = receiver_email
-
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.sendmail(SENDER_EMAIL, receiver_email, msg.as_string())
-        return True
-    except Exception as e:
-        print(f"[CRITICAL ERROR] send_email failed: {e}")  # રેન્ડર લૉગ્સમાં પાકી એરર જોવા માટે
-        return False
+# તમે બ્રેવોમાં વેરિફાય કરેલો સાચો ઈમેલ આઈડી
+SENDER_EMAIL = "cashfarmarkjsltk@gmail.com"
+SENDER_NAME = "Cash Farmer"
 
 
-# HTML ફોર્મેટમાં મોટો અને સુંદર મોકલવા માટેનું નવું ફંક્શન
-def send_html_email(receiver_email, subject, nickname, otp):
-    try:
-        html_content = f"""
-        <html>
-        <head>
-            <style>
-                @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
-                body {{
-                    font-family: 'Poppins', sans-serif;
-                    background-color: #f2f2f7;
-                    margin: 0;
-                    padding: 20px;
-                }}
-                .email-wrapper {{
-                    max-width: 600px;
-                    margin: 0 auto;
-                    background-color: #f2f2f7;
-                    padding: 20px;
-                }}
-                .email-container {{
-                    background-color: #ffffff;
-                    border-radius: 24px;
-                    overflow: hidden;
-                    padding: 0 0 40px 0;
-                    box-shadow: 0 4px 10px rgba(0,0,0,0.03);
-                }}
-                .header-banner {{
-                    background-color: #9d56cf;
-                    padding: 35px 20px;
-                    text-align: center;
-                }}
-                .header-title {{
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 28px;
-                    color: #ffffff;
-                    margin: 0;
-                    font-weight: 700;
-                    letter-spacing: 0.5px;
-                }}
-                .content {{
-                    padding: 40px 40px 0 40px;
-                    color: #333333;
-                    text-align: center;
-                }}
-                .salutation {{
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 22px;
-                    color: #9d56cf;
-                    margin-bottom: 20px;
-                    font-weight: 600;
-                }}
-                .message-text {{
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 15px;
-                    color: #555555;
-                    line-height: 1.6;
-                    margin-bottom: 30px;
-                }}
-                .otp-box {{
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 36px;
-                    font-weight: 700;
-                    color: #333333;
-                    letter-spacing: 6px;
-                    padding: 20px 40px;
-                    background-color: #f4ecf9;
-                    border: 2px dashed #9d56cf;
-                    border-radius: 12px;
-                    display: inline-block;
-                    margin-bottom: 30px;
-                }}
-                .warning-text {{
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 13px;
-                    color: #666666;
-                    line-height: 1.6;
-                    margin-top: 20px;
-                }}
-                .footer {{
-                    text-align: center;
-                    margin-top: 30px;
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 13px;
-                    color: #888888;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="email-wrapper">
-                <div class="email-container">
-                    <div class="header-banner">
-                        <div class="header-title">Welcome to Cash Farmer!</div>
-                    </div>
-                    <div class="content">
-                        <div class="salutation">Hi {nickname},</div>
-                        <div class="message-text">
-                            Thank you for registering with us. To complete your account setup,<br>
-                            please use the One-Time Password (OTP) below:
-                        </div>
-                        <div class="otp-box">{otp}</div>
-                        <div class="warning-text">
-                            The_OTP is valid for the next 10 minutes. Please do not share this OTP with anyone.<br><br>
-                            If you did not request this, please contact our support team immediately.
-                        </div>
-                    </div>
-                </div>
-                <div class="footer">
-                    © 2026 Cash Farmer. All rights reserved.
+# બ્રેવો API દ્વારા HTML ઈમેલ મોકલવાનું નવું અને પાકું ફંક્શન
+def send_html_email_via_api(receiver_email, subject, nickname, otp):
+    html_content = f"""
+    <html>
+    <head>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+            body {{ font-family: 'Poppins', sans-serif; background-color: #f2f2f7; margin: 0; padding: 20px; }}
+            .email-wrapper {{ max-width: 600px; margin: 0 auto; background-color: #f2f2f7; padding: 20px; }}
+            .email-container {{ background-color: #ffffff; border-radius: 24px; overflow: hidden; padding: 0 0 40px 0; box-shadow: 0 4px 10px rgba(0,0,0,0.03); }}
+            .header-banner {{ background-color: #9d56cf; padding: 35px 20px; text-align: center; }}
+            .header-title {{ font-family: 'Poppins', sans-serif; font-size: 28px; color: #ffffff; margin: 0; font-weight: 700; letter-spacing: 0.5px; }}
+            .content {{ padding: 40px 40px 0 40px; color: #333333; text-align: center; }}
+            .salutation {{ font-family: 'Poppins', sans-serif; font-size: 22px; color: #9d56cf; margin-bottom: 20px; font-weight: 600; }}
+            .message-text {{ font-family: 'Poppins', sans-serif; font-size: 15px; color: #555555; line-height: 1.6; margin-bottom: 30px; }}
+            .otp-box {{ font-family: 'Poppins', sans-serif; font-size: 36px; font-weight: 700; color: #333333; letter-spacing: 6px; padding: 20px 40px; background-color: #f4ecf9; border: 2px dashed #9d56cf; border-radius: 12px; display: inline-block; margin-bottom: 30px; }}
+            .warning-text {{ font-family: 'Poppins', sans-serif; font-size: 13px; color: #666666; line-height: 1.6; margin-top: 20px; }}
+            .footer {{ text-align: center; margin-top: 30px; font-family: 'Poppins', sans-serif; font-size: 13px; color: #888888; }}
+        </style>
+    </head>
+    <body>
+        <div class="email-wrapper">
+            <div class="email-container">
+                <div class="header-banner"><div class="header-title">Welcome to Cash Farmer!</div></div>
+                <div class="content">
+                    <div class="salutation">Hi {nickname},</div>
+                    <div class="message-text">Thank you for registering with us. To complete your account setup,<br>please use the One-Time Password (OTP) below:</div>
+                    <div class="otp-box">{otp}</div>
+                    <div class="warning-text">The OTP is valid for the next 10 minutes. Please do not share this OTP with anyone.<br><br>If you did not request this, please contact our support team immediately.</div>
                 </div>
             </div>
-        </body>
-        </html>
-        """
-        msg = MIMEText(html_content, "html")
-        msg["Subject"] = subject
-        msg["From"] = f"Cash Farmer <{SENDER_EMAIL}>"
-        msg["To"] = receiver_email
-
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.sendmail(SENDER_EMAIL, receiver_email, msg.as_string())
-        return True
+            <div class="footer">© 2026 Cash Farmer. All rights reserved.</div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    payload = {
+        "sender": {"name": SENDER_NAME, "email": SENDER_EMAIL},
+        "to": [{"email": receiver_email}],
+        "subject": subject,
+        "htmlContent": html_content
+    }
+    
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "api-key": BREVO_API_KEY
+    }
+    
+    try:
+        response = requests.post(BREVO_API_URL, json=payload, headers=headers)
+        if response.status_code in [200, 201]:
+            print(f"[Brevo API Success] Email sent to {receiver_email}")
+            return True
+        else:
+            print(f"[Brevo API Error] Status: {response.status_code}, Response: {response.text}")
+            return False
     except Exception as e:
-        print(f"[CRITICAL ERROR] send_html_email failed: {e}")  # રેન્ડર લૉગ્સમાં પાકી એરર જોવા માટે
+        print(f"[Brevo API Exception] Failed to send: {e}")
         return False
 
 
-# ફોરગોટ પાસવર્ડ માટે સુંદર મોટો ઇમેઇલ બોક્સ મોકલવાનું નવું ફંક્શન
-def send_forgot_password_html_email(receiver_email, subject, nickname, password):
-    try:
-        html_content = f"""
-        <html>
-        <head>
-            <style>
-                @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
-                body {{
-                    font-family: 'Poppins', sans-serif;
-                    background-color: #f2f2f7;
-                    margin: 0;
-                    padding: 20px;
-                }}
-                .email-wrapper {{
-                    max-width: 600px;
-                    margin: 0 auto;
-                    background-color: #f2f2f7;
-                    padding: 20px;
-                }}
-                .email-container {{
-                    background-color: #ffffff;
-                    border-radius: 24px;
-                    overflow: hidden;
-                    padding: 0 0 40px 0;
-                    box-shadow: 0 4px 10px rgba(0,0,0,0.03);
-                }}
-                .header-banner {{
-                    background-color: #9d56cf;
-                    padding: 35px 20px;
-                    text-align: center;
-                }}
-                .header-title {{
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 28px;
-                    color: #ffffff;
-                    margin: 0;
-                    font-weight: 700;
-                    letter-spacing: 0.5px;
-                }}
-                .content {{
-                    padding: 40px 40px 0 40px;
-                    color: #333333;
-                    text-align: center;
-                }}
-                .salutation {{
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 22px;
-                    color: #9d56cf;
-                    margin-bottom: 20px;
-                    font-weight: 600;
-                    text-align: left;
-                }}
-                .message-text {{
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 15px;
-                    color: #555555;
-                    line-height: 1.6;
-                    margin-bottom: 30px;
-                    text-align: left;
-                }}
-                .password-box {{
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 26px;
-                    font-weight: 700;
-                    color: #333333;
-                    padding: 20px 40px;
-                    background-color: #f4ecf9;
-                    border: 2px dashed #9d56cf;
-                    border-radius: 12px;
-                    display: inline-block;
-                    margin-bottom: 30px;
-                    text-align: center;
-                }}
-                .warning-text {{
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 13px;
-                    color: #666666;
-                    line-height: 1.6;
-                    margin-top: 20px;
-                    text-align: left;
-                }}
-                .footer {{
-                    text-align: center;
-                    margin-top: 30px;
-                    font-family: 'Poppins', sans-serif;
-                    font-size: 13px;
-                    color: #888888;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="email-wrapper">
-                <div class="email-container">
-                    <div class="header-banner">
-                        <div class="header-title">Forgot Your Password?</div>
-                    </div>
-                    <div class="content">
-                        <div class="salutation">Hello {nickname},</div>
-                        <div class="message-text">
-                            You requested to retrieve your password. Here is your current password:
-                        </div>
-                        <div class="password-box">{password}</div>
-                        <div class="warning-text">
-                            If you did not request this, please change your password immediately for security reasons.<br><br>
-                            If you have any questions, feel free to contact our support team.
-                        </div>
-                    </div>
-                </div>
-                <div class="footer">
-                    © 2026 Cash Farmer. All rights reserved.
+# ફોરગોટ પાસવર્ડ માટે બ્રેવો API ફંક્શન
+def send_forgot_password_email_via_api(receiver_email, subject, nickname, password):
+    html_content = f"""
+    <html>
+    <head>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Poppins:wght=300;400;600;700&display=swap');
+            body {{ font-family: 'Poppins', sans-serif; background-color: #f2f2f7; margin: 0; padding: 20px; }}
+            .email-wrapper {{ max-width: 600px; margin: 0 auto; background-color: #f2f2f7; padding: 20px; }}
+            .email-container {{ background-color: #ffffff; border-radius: 24px; overflow: hidden; padding: 0 0 40px 0; box-shadow: 0 4px 10px rgba(0,0,0,0.03); }}
+            .header-banner {{ background-color: #9d56cf; padding: 35px 20px; text-align: center; }}
+            .header-title {{ font-family: 'Poppins', sans-serif; font-size: 28px; color: #ffffff; margin: 0; font-weight: 700; letter-spacing: 0.5px; }}
+            .content {{ padding: 40px 40px 0 40px; color: #333333; text-align: center; }}
+            .salutation {{ font-family: 'Poppins', sans-serif; font-size: 22px; color: #9d56cf; margin-bottom: 20px; font-weight: 600; text-align: left; }}
+            .message-text {{ font-family: 'Poppins', sans-serif; font-size: 15px; color: #555555; line-height: 1.6; margin-bottom: 30px; text-align: left; }}
+            .password-box {{ font-family: 'Poppins', sans-serif; font-size: 26px; font-weight: 700; color: #333333; padding: 20px 40px; background-color: #f4ecf9; border: 2px dashed #9d56cf; border-radius: 12px; display: inline-block; margin-bottom: 30px; text-align: center; }}
+            .warning-text {{ font-family: 'Poppins', sans-serif; font-size: 13px; color: #666666; line-height: 1.6; margin-top: 20px; text-align: left; }}
+            .footer {{ text-align: center; margin-top: 30px; font-family: 'Poppins', sans-serif; font-size: 13px; color: #888888; }}
+        </style>
+    </head>
+    <body>
+        <div class="email-wrapper">
+            <div class="email-container">
+                <div class="header-banner"><div class="header-title">Forgot Your Password?</div></div>
+                <div class="content">
+                    <div class="salutation">Hello {nickname},</div>
+                    <div class="message-text">You requested to retrieve your password. Here is your current password:</div>
+                    <div class="password-box">{password}</div>
+                    <div class="warning-text">If you did not request this, please change your password immediately for security reasons.<br><br>If you have any questions, feel free to contact our support team.</div>
                 </div>
             </div>
-        </body>
-        </html>
-        """
-        msg = MIMEText(html_content, "html")
-        msg["Subject"] = subject
-        msg["From"] = f"Cash Farmer <{SENDER_EMAIL}>"
-        msg["To"] = receiver_email
-
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.sendmail(SENDER_EMAIL, receiver_email, msg.as_string())
-        return True
+            <div class="footer">© 2026 Cash Farmer. All rights reserved.</div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    payload = {
+        "sender": {"name": SENDER_NAME, "email": SENDER_EMAIL},
+        "to": [{"email": receiver_email}],
+        "subject": subject,
+        "htmlContent": html_content
+    }
+    
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "api-key": BREVO_API_KEY
+    }
+    
+    try:
+        response = requests.post(BREVO_API_URL, json=payload, headers=headers)
+        return response.status_code in [200, 201]
     except Exception as e:
-        print(f"[CRITICAL ERROR] send_forgot_password_html_email failed: {e}")  # રેન્ડર લૉગ્સમાં પાકી એરર જોવા માટે
+        print(f"[Brevo API Forgot Error]: {e}")
         return False
 
 
-# ૧૦ મિનિટ પછી જો યુઝર વેરિફાય ન થયો હોય તો રો (Row) ડીલીટ કરવાનું બેકગ્રાઉન્ડ ફંક્શન
 def delete_row_after_10_minutes(document_id):
-    time.sleep(600)  # ૬૦૦ સેકન્ડ એટલે કે ૧૦ મિનિટ રાહ જોશે
+    time.sleep(600)
     try:
         user_doc = databases.get_document(
-            database_id=APPWRITE_DATABASE_ID,
-            collection_id=APPWRITE_COLLECTION_ID,
-            document_id=str(document_id)
+            database_id=APPWRITE_DATABASE_ID, collection_id=APPWRITE_COLLECTION_ID, document_id=str(document_id)
         )
-        
-        # --- Appwrite ઓબ્જેક્ટ અથવા ડિક્શનરીમાંથી સુરક્ષિત રીતે ડેટા મેળવવો ---
-        if isinstance(user_doc, dict):
-            is_verified = user_doc.get("is_verified", False)
-        else:
-            is_verified = getattr(user_doc, 'is_verified', None)
-            if is_verified is None and hasattr(user_doc, 'data'):
-                is_verified = user_doc.data.get("is_verified", False)
-        
+        is_verified = user_doc.get("is_verified", False) if isinstance(user_doc, dict) else getattr(user_doc, 'is_verified', False)
         if not is_verified:
-            print(f"[Appwrite] Row {document_id} was not verified, but delete logic is skipped.")
+            print(f"[Appwrite] Row {document_id} cleanup skipped.")
     except Exception as e:
-        print(f"[Cleanup Error] Error occurred: {e}")
+        print(f"[Cleanup Error]: {e}")
 
 
 # =========================================================================
@@ -359,16 +188,14 @@ def send_otp():
 
     try:
         response = databases.list_documents(
-            database_id=APPWRITE_DATABASE_ID,
-            collection_id=APPWRITE_COLLECTION_ID,
+            database_id=APPWRITE_DATABASE_ID, collection_id=APPWRITE_COLLECTION_ID,
             queries=[Query.equal("user_gmail_account", gmail_id)]
         )
-        
         documents = response.get('documents') if isinstance(response, dict) else getattr(response, 'documents', [])
+        
         if documents and len(documents) > 0:
             user_doc = documents[0]
             document_id = user_doc.get('$id') if isinstance(user_doc, dict) else getattr(user_doc, 'id', getattr(user_doc, '$id', None))
-            
             try:
                 databases.update_document(
                     database_id=APPWRITE_DATABASE_ID, collection_id=APPWRITE_COLLECTION_ID,
@@ -379,8 +206,6 @@ def send_otp():
                     database_id=APPWRITE_DATABASE_ID, collection_id=APPWRITE_COLLECTION_ID,
                     document_id=str(document_id), data={"user_gmail_otp": str(otp), "is_verified": False}
                 )
-            print(f"[Appwrite] Updated user_gmail_otp for existing user {gmail_id}.")
-            
             threading.Thread(target=delete_row_after_10_minutes, args=(document_id,)).start()
         else:
             try:
@@ -393,8 +218,6 @@ def send_otp():
                     database_id=APPWRITE_DATABASE_ID, collection_id=APPWRITE_COLLECTION_ID,
                     document_id="unique()", data={"user_gmail_account": gmail_id, "user_nickname": nickname if nickname else "User", "user_gmail_otp": str(otp), "user_password": password if password else "", "is_verified": False}
                 )
-            print(f"[Appwrite] Created new user with user_gmail_otp.")
-            
             new_doc_id = new_doc.get('$id') if isinstance(new_doc, dict) else getattr(new_doc, 'id', getattr(new_doc, '$id', None))
             threading.Thread(target=delete_row_after_10_minutes, args=(new_doc_id,)).start()
             
@@ -404,7 +227,8 @@ def send_otp():
     subject = "Welcome to Cash Farmer."
     display_name = nickname if nickname else "User"
 
-    if send_html_email(gmail_id, subject, display_name, otp):
+    # SMTP ના બદલે બ્રેવો API થી મેઇલ મોકલીએ છીએ
+    if send_html_email_via_api(gmail_id, subject, display_name, otp):
         return jsonify({"status": "success", "message": "OTP sent successfully"})
     else:
         return jsonify({"status": "error", "message": "Failed to send email"}), 500
@@ -419,23 +243,18 @@ def verify_otp():
     gmail_id = data.get("gmail_id")
     entered_otp = data.get("otp")
 
-    print(f"\n[REQUEST] /verify_otp root par request aavi che. Gmail: {gmail_id}, Entered OTP: {entered_otp}")
-
     if not gmail_id or not entered_otp:
         return jsonify({"status": "error", "message": "Missing email or OTP"}), 400
 
     try:
         db_response = databases.list_documents(
-            database_id=APPWRITE_DATABASE_ID,
-            collection_id=APPWRITE_COLLECTION_ID,
+            database_id=APPWRITE_DATABASE_ID, collection_id=APPWRITE_COLLECTION_ID,
             queries=[Query.equal("user_gmail_account", gmail_id)]
         )
-        
         documents = db_response.get('documents') if isinstance(db_response, dict) else getattr(db_response, 'documents', [])
         
         if documents and len(documents) > 0:
             user_doc = documents[0]
-            
             if isinstance(user_doc, dict):
                 appwrite_otp = user_doc.get("user_gmail_otp")
                 nickname = user_doc.get("user_nickname", "User")
@@ -446,46 +265,23 @@ def verify_otp():
                 nickname = getattr(user_doc, 'user_nickname', "User")
                 password = getattr(user_doc, 'user_password', "")
                 doc_id = getattr(user_doc, 'id', getattr(user_doc, '$id', None))
-                
-                if appwrite_otp is None and hasattr(user_doc, 'data'):
-                    appwrite_otp = user_doc.data.get("user_gmail_otp")
-                    nickname = user_doc.data.get("user_nickname", "User")
-                    password = user_doc.data.get("user_password", "")
-                    if doc_id is None:
-                        doc_id = user_doc.data.get('$id') if '$id' in user_doc.data else user_doc.data.get('id')
-            
-            print(f"[DATABASE INFO] Database OTP: {appwrite_otp}, Document ID: {doc_id}")
 
             if appwrite_otp and str(entered_otp) == str(appwrite_otp):
-                print(f"[SUCCESS] OTP Match thayo! Document update thay che: id={doc_id} -> is_verified=True")
-                
                 databases.update_document(
                     database_id=APPWRITE_DATABASE_ID, collection_id=APPWRITE_COLLECTION_ID,
                     document_id=str(doc_id), data={"user_gmail_otp": 0, "is_verified": True}
                 )
-
-                print(f"[DATABASE UPDATED] Appwrite ma successfully row verify thai gai che.")
                 otp_store.pop(gmail_id, None)
-
                 return jsonify({
-                    "status": "success", 
-                    "message": "OTP verified successfully.",
-                    "user_data": {
-                        "nickname": nickname,
-                        "gmail_account": gmail_id,
-                        "password": password
-                    }
+                    "status": "success", "message": "OTP verified successfully.",
+                    "user_data": {"nickname": nickname, "gmail_account": gmail_id, "password": password}
                 })
             else:
-                print(f"[WRONG OTP] OTP match nathi thayo. Entered: {entered_otp}, DB: {appwrite_otp}")
                 return jsonify({"status": "wrong_otp", "message": "Invalid OTP"}), 200
         else:
-            print(f"[NOT FOUND] User database ma nathi malyo: {gmail_id}")
             return jsonify({"status": "error", "message": "User not found"}), 404
-            
     except Exception as e:
-        print(f"[Verify Error Exception]: {e}")
-        return jsonify({"status": "error", "0message": "Internal server error"}), 500
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
 # =========================================================================
@@ -501,15 +297,13 @@ def forgot_password():
 
     try:
         db_response = databases.list_documents(
-            database_id=APPWRITE_DATABASE_ID,
-            collection_id=APPWRITE_COLLECTION_ID,
+            database_id=APPWRITE_DATABASE_ID, collection_id=APPWRITE_COLLECTION_ID,
             queries=[Query.equal("user_gmail_account", gmail_id)]
         )
-
         documents = db_response.get('documents') if isinstance(db_response, dict) else getattr(db_response, 'documents', [])
+        
         if documents and len(documents) > 0:
             user_doc = documents[0]
-            
             if isinstance(user_doc, dict):
                 db_password = user_doc.get("user_password")
                 nickname = user_doc.get("user_nickname", "User")
@@ -518,17 +312,13 @@ def forgot_password():
                 db_password = getattr(user_doc, 'user_password', None)
                 nickname = getattr(user_doc, 'user_nickname', "User")
                 is_verified = getattr(user_doc, 'is_verified', False)
-                if db_password is None and hasattr(user_doc, 'data'):
-                    db_password = user_doc.data.get("user_password")
-                    nickname = user_doc.data.get("user_nickname", "User")
-                    is_verified = user_doc.data.get("is_verified", False)
 
             if not is_verified:
                 return jsonify({"status": "fail", "message": "Email not found in database"}), 200
 
             if db_password:
                 subject = "Welcome to Cash Farmer."
-                if send_forgot_password_html_email(gmail_id, subject, nickname, db_password):
+                if send_forgot_password_email_via_api(gmail_id, subject, nickname, db_password):
                     return jsonify({"status": "success", "message": "Password sent successfully"})
                 else:
                     return jsonify({"status": "error", "message": "Failed to send email"}), 500
@@ -536,7 +326,6 @@ def forgot_password():
                 return jsonify({"status": "fail", "message": "Password column is empty"}), 200
         else:
             return jsonify({"status": "fail", "message": "Email not found in database"}), 200
-
     except Exception as forgot_err:
         return jsonify({"status": "error", "message": "Internal server error"}), 500
 
@@ -555,49 +344,31 @@ def resend_otp():
     new_otp = str(random.randint(10000, 99999))
     otp_store[gmail_id] = new_otp
 
-    nickname = "User"
     try:
         response = databases.list_documents(
-            database_id=APPWRITE_DATABASE_ID,
-            collection_id=APPWRITE_COLLECTION_ID,
+            database_id=APPWRITE_DATABASE_ID, collection_id=APPWRITE_COLLECTION_ID,
             queries=[Query.equal("user_gmail_account", gmail_id)]
         )
-        
         documents = response.get('documents') if isinstance(response, dict) else getattr(response, 'documents', [])
+        
         if documents and len(documents) > 0:
             user_doc = documents[0]
-            
-            if isinstance(user_doc, dict):
-                nickname = user_doc.get("user_nickname", "User")
-                document_id = user_doc.get('$id')
-            else:
-                nickname = getattr(user_doc, 'user_nickname', "User")
-                document_id = getattr(user_doc, 'id', getattr(user_doc, '$id', None))
-                if document_id is None and hasattr(user_doc, 'data'):
-                    nickname = user_doc.data.get("user_nickname", "User")
-
+            document_id = user_doc.get('$id') if isinstance(user_doc, dict) else getattr(user_doc, 'id', getattr(user_doc, '$id', None))
             try:
                 databases.update_document(
-                    database_id=APPWRITE_DATABASE_ID, 
-                    collection_id=APPWRITE_COLLECTION_ID,
-                    document_id=str(document_id), 
-                    data={"user_gmail_otp": int(new_otp), "is_verified": False}
+                    database_id=APPWRITE_DATABASE_ID, collection_id=APPWRITE_COLLECTION_ID,
+                    document_id=str(document_id), data={"user_gmail_otp": int(new_otp), "is_verified": False}
                 )
-                print(f"[Appwrite] Resend: user_gmail_otp updated as Integer for {gmail_id}.")
-            except Exception as e:
+            except Exception:
                 databases.update_document(
-                    database_id=APPWRITE_DATABASE_ID, 
-                    collection_id=APPWRITE_COLLECTION_ID,
-                    document_id=str(document_id), 
-                    data={"user_gmail_otp": str(new_otp), "is_verified": False}
+                    database_id=APPWRITE_DATABASE_ID, collection_id=APPWRITE_COLLECTION_ID,
+                    document_id=str(document_id), data={"user_gmail_otp": str(new_otp), "is_verified": False}
                 )
-                
             threading.Thread(target=delete_row_after_10_minutes, args=(document_id,)).start()
+            return jsonify({"status": "success", "message": "OTP resent successfully"})
         else:
             return jsonify({"status": "error", "message": "User record not found"}), 404
-            
     except Exception as appwrite_err:
-        print(f"[Appwrite Resend Error]: {appwrite_err}")
         return jsonify({"status": "error", "message": "Database update failed"}), 500
 
 
