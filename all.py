@@ -30,7 +30,7 @@ databases = Databases(client)
 # હંગામી ધોરણે OTP સેવ કરવા માટેનું ડિક્શનરી
 otp_store = {}
 
-# --- બ્રેવો (Brevo) ઈમેલ મોકલવાનું નવું કન્ફિગરેશન (તમે કીધા મુજબ અપડેટ કરેલ) ---
+# --- બ્રેવો (Brevo) ઈમેલ મોકલવાનું નવું કન્ફિગરેશન ---
 SMTP_SERVER = "smtp-relay.brevo.com"
 SMTP_PORT = 587
 
@@ -53,7 +53,7 @@ def send_email(receiver_email, subject, body):
             server.sendmail(SENDER_EMAIL, receiver_email, msg.as_string())
         return True
     except Exception as e:
-        print(f"Email sending error: {e}")
+        print(f"[CRITICAL ERROR] send_email failed: {e}")  # રેન્ડર લૉગ્સમાં પાકી એરર જોવા માટે
         return False
 
 
@@ -159,7 +159,7 @@ def send_html_email(receiver_email, subject, nickname, otp):
                         </div>
                         <div class="otp-box">{otp}</div>
                         <div class="warning-text">
-                            The OTP is valid for the next 10 minutes. Please do not share this OTP with anyone.<br><br>
+                            The_OTP is valid for the next 10 minutes. Please do not share this OTP with anyone.<br><br>
                             If you did not request this, please contact our support team immediately.
                         </div>
                     </div>
@@ -182,7 +182,7 @@ def send_html_email(receiver_email, subject, nickname, otp):
             server.sendmail(SENDER_EMAIL, receiver_email, msg.as_string())
         return True
     except Exception as e:
-        print(f"HTML Email sending error: {e}")
+        print(f"[CRITICAL ERROR] send_html_email failed: {e}")  # રેન્ડર લૉગ્સમાં પાકી એરર જોવા માટે
         return False
 
 
@@ -313,11 +313,11 @@ def send_forgot_password_html_email(receiver_email, subject, nickname, password)
             server.sendmail(SENDER_EMAIL, receiver_email, msg.as_string())
         return True
     except Exception as e:
-        print(f"[ERROR] Forgot Password Email sending error: {e}")
+        print(f"[CRITICAL ERROR] send_forgot_password_html_email failed: {e}")  # રેન્ડર લૉગ્સમાં પાકી એરર જોવા માટે
         return False
 
 
-# ૧૦ મિનિટ પછી જો યુઝર વેરિફાય ન થયો હોય તો રો (Row) ડીલીટ કરવાનું બેકગ્રાઉชั่น ફંક્શન
+# ૧૦ મિનિટ પછી જો યુઝર વેરિફાય ન થયો હોય તો રો (Row) ડીલીટ કરવાનું બેકગ્રાઉન્ડ ફંક્શન
 def delete_row_after_10_minutes(document_id):
     time.sleep(600)  # ૬૦૦ સેકન્ડ એટલે કે ૧૦ મિનિટ રાહ જોશે
     try:
