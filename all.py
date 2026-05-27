@@ -35,7 +35,7 @@ SMTP_SERVER = "smtp-relay.brevo.com"
 SMTP_PORT = 587
 
 # અહીં os.environ.get લખવાથી સર્વર તમારા રેન્ડર ડેશબોર્ડના વેરિએબલ્સ વાંચશે
-SENDER_EMAIL = os.environ.get("GMAIL_USER", "jigarthakor12322@gmail.com")
+SENDER_EMAIL = os.environ.get("GMAIL_USER", "cashfarmerkjsltk@gmail.com")
 SENDER_PASSWORD = os.environ.get("GMAIL_PASS", "Xsmtpsib-03ac21bb98bc895d741223d78fb1c41d098a52788e00ee458a3c8d64dddb9209-uU2K7PpPK4VHRrea")
 
 
